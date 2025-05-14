@@ -7,6 +7,8 @@ from tilelang.transform import PassContext
 from tilelang.contrib.nvcc import have_tma
 from typing import Optional
 
+SUPPORTED_TMA_ARCHS = {"sm_90", "sm_90a"}
+
 
 def allow_tma_and_warp_specialized(pass_ctx: Optional[PassContext] = None,
                                    target: Optional[Target] = None) -> bool:
