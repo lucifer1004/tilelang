@@ -84,27 +84,10 @@ def _get_nvrtc_library() -> ctypes.CDLL:
             "Could not find libnvrtc.so. Please make sure CUDA is installed."
         )
 
-def get_nvrtc_version() -> Tuple[int, int]:
-    result, major, minor = nvrtc.nvrtcVersion()
-    assert result == nvrtc.nvrtcResult.NVRTC_SUCCESS, f"Failed to get NVRTC version: {result}"
-    return (major, minor)
-
 NVRTC_SUCCESS = 0
 
 class NVRTCCompiler(object):
     _instance = None
-    
-    @staticmethod
-    def check_nvrtc(result: int) -> None:
-        if result != NVRTC_SUCCESS:
-            err_str = ctypes.c_char_p()
-            libnvrtc.nvrtcGetErrorString(result, ctypes.byref(err_str))
-            error_message = (
-                err_str.value.decode()
-                if err_str.value is not None
-                else "Unknown CUDA error"
-            )
-            raise RuntimeError(f"CUDA error: {error_message}")
 
     def __new__(cls):
         if cls._instance is None:
@@ -112,6 +95,13 @@ class NVRTCCompiler(object):
             cls._instance.cuda = _get_cuda_library()
             cls._instance.nvrtc = _get_nvrtc_library()
         return cls._instance
+    
+    def get_nvrtc_version(self) -> Tuple[int, int]:
+        major = ctypes.c_int()
+        minor = ctypes.c_int()
+        result = self.nvrtc.nvrtcVersion(ctypes.byref(major), ctypes.byref(minor))
+        assert result == NVRTC_SUCCESS, f"Failed to get NVRTC version: {result}"
+        return (major.value, minor.value)
 
     def compile(self, code: str,
                  target_format: Literal["ptx", "cubin"] = "ptx",
@@ -157,7 +147,7 @@ class NVRTCCompiler(object):
             raise ValueError("target_format must be cubin or ptx")
 
         final_options = ["-default-device"]
-        if get_nvrtc_version() >= (12, 8):
+        if self.get_nvrtc_version() >= (12, 8):
             final_options += ["-pch"]
         if arch is not None:
             final_options += [arch_option]
@@ -173,16 +163,15 @@ class NVRTCCompiler(object):
         code = "#include <tl_templates/cuda/nvrtc_std.h>\n" + code
         code_bytes = bytes(code, "utf-8")
         program = ctypes.c_void_p()
-        self.check_nvrtc(
-            self.nvrtc.nvrtcCreateProgram(
-                ctypes.byref(program),
-                code_bytes,
-                bytes(file_name, "utf-8"),
-                0,
-                None,
-                None,
-            )
+        result = self.nvrtc.nvrtcCreateProgram(
+            ctypes.byref(program),
+            code_bytes,
+            bytes(file_name, "utf-8"),
+            0,
+            None,
+            None,
         )
+        assert result == NVRTC_SUCCESS, f"Failed to create program: {result}"
 
         options_bytes = [bytes(flag, "utf-8") for flag in final_options]
         options_carray = (ctypes.c_char_p * len(options_bytes))(*options_bytes)

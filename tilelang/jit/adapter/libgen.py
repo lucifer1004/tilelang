@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import cuda.bindings.driver as cuda
-    from tilelang.contrib.nvrtc import compile_cuda
+    from tilelang.contrib.nvrtc import NVRTCCompiler
 except ImportError:
     logger.warning("cuda-python is not available, nvrtc backend will not work")
 
@@ -191,7 +191,7 @@ class PyLibraryGenerator(LibraryGenerator):
 
             cuda_home = "/usr/local/cuda" if CUDA_HOME is None else CUDA_HOME
 
-            cubin_bytes = compile_cuda(
+            cubin_bytes = NVRTCCompiler().compile(
                 self.lib_code,
                 target_format="cubin",
                 options=[f"-I{tl_template_path}", f"-I{cutlass_path}", f"-I{cuda_home}/include"],
