@@ -32,8 +32,9 @@ class LibraryGenerator(object):
     libpath: Optional[str] = None
     lib_code: Optional[str] = None
 
-    def __init__(self, target: Target):
+    def __init__(self, target: Target, verbose: bool = False):
         self.target = target
+        self.verbose = verbose
 
     def update_lib_code(self, lib_code: str):
         self.lib_code = lib_code
@@ -143,8 +144,9 @@ class PyLibraryGenerator(LibraryGenerator):
     culib = None
     pymodule = None
 
-    def __init__(self, target: Target):
-        super().__init__(target)
+    def __init__(self, target: Target, verbose: bool = False, subprocess: bool = True):
+        super().__init__(target, verbose)
+        self.subprocess = subprocess
 
     @staticmethod
     def import_from_file(module_name, file_path):
@@ -189,8 +191,9 @@ class PyLibraryGenerator(LibraryGenerator):
             cubin_bytes = compile_cuda(
                 self.lib_code,
                 target_format="cubin",
-                options=[f"-I{tl_template_path}", f"-I{cutlass_path}", f"-I{cuda_home}/include"],
-                verbose=True)
+                options=[f"-I{tl_template_path}", f"-I{cutlass_path}",
+                         f"-I{cuda_home}/include", f"-I{cuda_home}/targets/x86_64-linux/include"],
+                verbose=self.verbose, subprocess=self.subprocess)
             with open(libpath, "wb") as f:
                 f.write(cubin_bytes)
 

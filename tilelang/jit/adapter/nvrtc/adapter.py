@@ -75,7 +75,7 @@ class NVRTCKernelAdapter(BaseKernelAdapter):
         self.wrapper.assign_device_module(device_mod)
         self.host_func, self.function_names = self.wrapper.wrap(kernel_global_source)
 
-        self.lib_generator = PyLibraryGenerator(self.target)
+        self.lib_generator = PyLibraryGenerator(self.target, self.verbose)
         self.lib_generator.update_lib_code(self.kernel_global_source)
         self.lib_generator.update_host_func(self.host_func)
         self.lib_generator.compile_lib()
@@ -128,7 +128,7 @@ class NVRTCKernelAdapter(BaseKernelAdapter):
 
         adapter.target = Target.canon_target(determine_target(target))
         adapter.verbose = verbose
-        adapter.lib_generator = PyLibraryGenerator(adapter.target)
+        adapter.lib_generator = PyLibraryGenerator(adapter.target, adapter.verbose)
         adapter.lib_generator.load_lib(lib_path=kernel_lib_path)
         adapter.pymodule = adapter.lib_generator.pymodule
         adapter.function_names = adapter.pymodule._function_names

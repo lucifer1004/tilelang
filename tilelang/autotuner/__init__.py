@@ -130,7 +130,9 @@ class CompileArgs:
         skip_check: bool = False
         manual_check_prog: Callable = None
         cache_input_tensors: bool = True
+        execution_backend: Literal["dlpack", "ctypes", "cython", "nvrtc"] = "cython"
         target: Literal['auto', 'cuda', 'hip'] = 'auto'
+        verbose: bool = False
     """
 
     out_idx: Union[List[int], int] = -1
@@ -143,7 +145,9 @@ class CompileArgs:
     skip_check: bool = False
     manual_check_prog: Callable = None
     cache_input_tensors: bool = True
+    execution_backend: Literal["dlpack", "ctypes", "cython", "nvrtc"] = "cython"
     target: Literal['auto', 'cuda', 'hip'] = 'auto'
+    verbose: bool = False
 
 
 class AutoTuner:
@@ -190,7 +194,9 @@ class AutoTuner:
                          skip_check: bool = False,
                          manual_check_prog: Callable = None,
                          cache_input_tensors: bool = True,
-                         target: Literal['auto', 'cuda', 'hip'] = 'auto'):
+                         execution_backend: Literal["dlpack", "ctypes", "cython", "nvrtc"] = "cython",
+                         target: Literal['auto', 'cuda', 'hip'] = 'auto',
+                         verbose: bool = False):
         """Set compilation arguments for the auto-tuner.
 
         Args:
@@ -204,7 +210,9 @@ class AutoTuner:
             skip_check: Whether to skip validation.
             manual_check_prog: Manual check program for validation.
             cache_input_tensors: Whether to cache input tensors.
+            execution_backend: Execution backend for compilation.
             target: Target platform.
+            verbose: Whether to enable verbose logging.
 
         Returns:
             AutoTuner: Self for method chaining.
@@ -220,7 +228,9 @@ class AutoTuner:
             skip_check=skip_check,
             manual_check_prog=manual_check_prog,
             cache_input_tensors=cache_input_tensors,
-            target=target)
+            execution_backend=execution_backend,
+            target=target,
+            verbose=verbose)
 
         # If a custom `supply_prog`` is provided, the profiler's `supply_type` setting
         # becomes ineffective. The custom supply program will be used instead.
@@ -252,7 +262,7 @@ class AutoTuner:
         def _compile(*config_arg):
             compile_args = self.compile_args
             kernel = tilelang.compile(
-                self.fn(*config_arg), out_idx=compile_args.out_idx, target=compile_args.target)
+                self.fn(*config_arg), out_idx=compile_args.out_idx, execution_backend=compile_args.execution_backend, target=compile_args.target, verbose=compile_args.verbose)
             jit_context = JITContext(
                 out_idx=compile_args.out_idx,
                 ref_prog=compile_args.ref_prog,
@@ -476,7 +486,9 @@ def jit(out_idx: Optional[List[int]] = None,
         skip_check: bool = False,
         manual_check_prog: Callable = None,
         cache_input_tensors: bool = True,
-        target: Literal['auto', 'cuda', 'hip'] = 'auto') -> Callable:
+        execution_backend: Literal["dlpack", "ctypes", "cython", "nvrtc"] = "cython",
+        target: Literal['auto', 'cuda', 'hip'] = 'auto',
+        verbose: bool = False) -> Callable:
     """Just-In-Time compilation decorator for tilelang programs.
 
     Args:
@@ -490,7 +502,9 @@ def jit(out_idx: Optional[List[int]] = None,
         skip_check: Whether to skip validation checks.
         manual_check_prog: Manual check program for validation.
         cache_input_tensors: Whether to cache input tensors for each compilation.
+        execution_backend: Execution backend for compilation.
         target: Target platform ('auto', 'cuda', or 'hip').
+        verbose: Whether to enable verbose logging.
 
     Returns:
         Callable: Decorated function that performs JIT compilation.
@@ -507,7 +521,7 @@ def jit(out_idx: Optional[List[int]] = None,
         @wraps(fn)
         def decorator(*args, **kwargs) -> float:
 
-            kernel = tilelang.compile(fn(*args, **kwargs), out_idx=out_idx, target=target)
+            kernel = tilelang.compile(fn(*args, **kwargs), out_idx=out_idx, execution_backend=execution_backend, target=target, verbose=verbose)
 
             return JITContext(
                 out_idx=out_idx,
