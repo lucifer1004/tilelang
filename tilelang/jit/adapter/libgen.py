@@ -144,9 +144,9 @@ class PyLibraryGenerator(LibraryGenerator):
     culib = None
     pymodule = None
 
-    def __init__(self, target: Target, verbose: bool = False, subprocess: bool = True):
+    def __init__(self, target: Target, verbose: bool = False):
         super().__init__(target, verbose)
-        self.subprocess = subprocess
+        self.subprocess = os.environ.get("TILELANG_NVRTC_SUBPROCESS", "0") == "1"
 
     @staticmethod
     def import_from_file(module_name, file_path):

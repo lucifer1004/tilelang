@@ -23,19 +23,31 @@ def _cleanup_compiler_processes():
     with _compiler_processes_lock:
         # Create a copy for iteration as _active_compiler_processes might be modified elsewhere
         # if not careful, though cleanup should be the last thing.
-        processes_to_clean = list(_active_compiler_processes)
+        processes_to_clean = list(_active_compiler_processes) # Now contains (req_q, res_q, proc)
         _active_compiler_processes.clear() # Clear original list
 
-    for req_q, proc in processes_to_clean:
+    for req_q, res_q, proc in processes_to_clean:
         try:
             logger.debug(f"Sending exit signal to compiler worker {proc.pid}")
-            req_q.put(None)
+            req_q.put(None) # Signal worker to exit
         except Exception as e:
             # Queue might be closed or process already terminated
-            logger.error(f"Error sending exit signal to {proc.pid}: {e}")
-            pass # Continue to attempt join
+            logger.error(f"Error sending exit signal to {proc.pid} via req_q: {e}")
+            pass # Continue to attempt cleanup
 
-    for req_q, proc in processes_to_clean:
+    for req_q, res_q, proc in processes_to_clean:
+        try:
+            logger.debug(f"Closing queues for compiler worker {proc.pid}")
+            req_q.close()
+            req_q.join_thread() # Wait for the queue's feeder thread
+        except Exception as e:
+            logger.error(f"Error closing request queue for {proc.pid}: {e}")
+        try:
+            res_q.close()
+            res_q.join_thread() # Wait for the queue's feeder thread
+        except Exception as e:
+            logger.error(f"Error closing result queue for {proc.pid}: {e}")
+
         try:
             logger.debug(f"Joining compiler worker {proc.pid}")
             proc.join(timeout=5)  # Wait for 5 seconds
@@ -211,7 +223,7 @@ def compile_cuda(code: str,
             _thread_local_compiler_data.process = process_handle_for_thread # Store the correct process handle
 
             with _compiler_processes_lock:
-                _active_compiler_processes.append((req_q, process_handle_for_thread))
+                _active_compiler_processes.append((req_q, res_q, process_handle_for_thread)) # Store req_q, res_q, and process
         
         request_queue = _thread_local_compiler_data.request_queue
         result_queue = _thread_local_compiler_data.result_queue
@@ -226,17 +238,51 @@ def compile_cuda(code: str,
             try:
                 with _compiler_processes_lock:
                     # Find and remove the specific dead process entry if it's still there
-                    entry_to_remove = None
-                    for entry_req_q, entry_proc in _active_compiler_processes:
+                    entry_to_remove_tuple = None
+                    found_idx = -1
+                    for i, (entry_req_q, entry_res_q, entry_proc) in enumerate(_active_compiler_processes):
                         if entry_proc is process_handle: # Check if it's the same process object
-                            entry_to_remove = (entry_req_q, entry_proc)
+                            found_idx = i
+                            entry_to_remove_tuple = (entry_req_q, entry_res_q, entry_proc)
                             break
-                    if entry_to_remove:
-                        _active_compiler_processes.remove(entry_to_remove)
+                    if found_idx != -1:
+                        del _active_compiler_processes[found_idx]
                         logger.debug(f"Removed dead process entry for PID {process_handle.pid} from _active_compiler_processes.")
+                        
+                        # Explicitly close queues of the dead process
+                        if entry_to_remove_tuple:
+                            dead_req_q, dead_res_q, _ = entry_to_remove_tuple
+                            try:
+                                dead_req_q.close()
+                                dead_req_q.join_thread()
+                            except Exception as e_rq_close:
+                                logger.error(f"Error closing request queue for dead PID {process_handle.pid}: {e_rq_close}")
+                            try:
+                                dead_res_q.close()
+                                dead_res_q.join_thread()
+                            except Exception as e_rsq_close:
+                                logger.error(f"Error closing result queue for dead PID {process_handle.pid}: {e_rsq_close}")
+
             except Exception as e_cleanup:
                 logger.error(f"Error during cleanup of dead process entry for PID {process_handle.pid}: {e_cleanup}", exc_info=True)
             # Clear this thread's local data to force re-creation on next call
+            # Do this after attempting to close queues associated with the _thread_local_compiler_data
+            local_req_q_to_clean = getattr(_thread_local_compiler_data, 'request_queue', None)
+            local_res_q_to_clean = getattr(_thread_local_compiler_data, 'result_queue', None)
+
+            if local_req_q_to_clean:
+                try:
+                    local_req_q_to_clean.close()
+                    local_req_q_to_clean.join_thread()
+                except Exception as e:
+                    logger.error(f"Error cleaning up thread-local request_queue for dead PID {process_handle.pid}: {e}")
+            if local_res_q_to_clean:
+                try:
+                    local_res_q_to_clean.close()
+                    local_res_q_to_clean.join_thread()
+                except Exception as e:
+                    logger.error(f"Error cleaning up thread-local result_queue for dead PID {process_handle.pid}: {e}")
+
             if hasattr(_thread_local_compiler_data, 'request_queue'): del _thread_local_compiler_data.request_queue
             if hasattr(_thread_local_compiler_data, 'result_queue'): del _thread_local_compiler_data.result_queue
             if hasattr(_thread_local_compiler_data, 'process'): del _thread_local_compiler_data.process

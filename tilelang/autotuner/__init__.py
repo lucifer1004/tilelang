@@ -466,6 +466,8 @@ def autotune(configs: Any, warmup: int = 25, rep: int = 100, timeout: int = 100)
     Returns:
         Callable: Decorated function that performs auto-tuning.
     """
+    
+    os.environ["TILELANG_NVRTC_SUBPROCESS"] = "1"
 
     def decorator(fn: Callable) -> AutoTuner:
         autotuner = AutoTuner(fn, configs=configs)
